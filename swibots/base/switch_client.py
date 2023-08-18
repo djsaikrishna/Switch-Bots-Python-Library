@@ -107,6 +107,7 @@ class SwitchRestClient(RestClient):
         headers = super().prepare_request_headers(headers)
         if self.token is not None:
             headers["Authorization"] = f"Bearer {self.token}"
+        headers["Connection"] = "close"
         return headers
 
     async def do_request(
