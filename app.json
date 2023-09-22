@@ -1,0 +1,184 @@
+{
+    "callbackQueryId": "",
+    "type": "appPage",
+    "mode": "fullscreen",
+    "container": {
+        "height": 1200,
+        "width": 1000,
+        "bgColor": "white",
+        "column": {
+            "color": "black",
+            "scrollable": true,
+            "mainAxisSize": "max",
+            "mainAxisAlignment": "center",
+            "crossAxisAlignment": "center",
+            "expansion": "default_expansion",
+            "padding": {
+                "r": 5,
+                "l": 5,
+                "u": 5,
+                "d": 5
+            },
+            "children": {
+                "rows": [
+                    {
+                        "color": "white",
+                        "scrollable": true,
+                        "mainAxisSize": "max",
+                        "mainAxisAlignment": "start",
+                        "crossAxisAlignment": "center",
+                        "expansion": "default_expansion",
+                        "padding": {
+                            "r": 0,
+                            "l": 0,
+                            "u": 0,
+                            "d": 0
+                        },
+                        "children": {
+                            "component": {
+                                "type": "text",
+                                "text": "Hello User!",
+                                "size": 10,
+                                "color": "black",
+                                "opacity": 0.5,
+                                "align": "left"
+                            }
+                        }
+                    },
+                    {
+                        "color": "white",
+                        "scrollable": true,
+                        "mainAxisSize": "max",
+                        "mainAxisAlignment": "start",
+                        "crossAxisAlignment": "center",
+                        "expansion": "default_expansion",
+                        "padding": {
+                            "r": 0,
+                            "l": 5,
+                            "u": 0,
+                            "d": 10
+                        },
+                        "children": {
+                            "component": {
+                                "type": "image",
+                                "mediaUrl": "https://www.freevector.com/uploads/vector/preview/7768/FreeVector-Digital-Circle.jpg",
+                                "expandOnClick": false,
+                                "callbackData": ""
+                            }
+                        }
+                    },
+                    {
+                        "color": "white",
+                        "scrollable": true,
+                        "mainAxisSize": "max",
+                        "mainAxisAlignment": "start",
+                        "crossAxisAlignment": "center",
+                        "expansion": "default_expansion",
+                        "padding": {
+                            "r": 0,
+                            "l": 5,
+                            "u": 0,
+                            "d": 10
+                        },
+                        "children": {
+                            "columns": [
+                                {
+                                    "color": "black",
+                                    "scrollable": true,
+                                    "mainAxisSize": "max",
+                                    "mainAxisAlignment": "center",
+                                    "crossAxisAlignment": "center",
+                                    "expansion": "default_expansion",
+                                    "padding": {
+                                        "r": 0,
+                                        "l": 5,
+                                        "u": 0,
+                                        "d": 0
+                                    },
+                                    "children": {
+                                        "layout": {
+                                            "type": "card",
+                                            "title": "Card 1",
+                                            "subTitle": "See you later",
+                                            "coverImage": "https://www.freevector.com/uploads/vector/preview/7768/FreeVector-Digital-Circle.jpg",
+                                            "icon": "82ca2255-35bd-4e63-880c-087fc7e6e783",
+                                            "iconAlignment": "",
+                                            "size": 255,
+                                            "components": []
+                                        },
+                                        "rows": []
+                                    }
+                                },
+                                {
+                                    "color": "black",
+                                    "scrollable": true,
+                                    "mainAxisSize": "max",
+                                    "mainAxisAlignment": "center",
+                                    "crossAxisAlignment": "center",
+                                    "expansion": "default_expansion",
+                                    "padding": {
+                                        "r": 0,
+                                        "l": 5,
+                                        "u": 0,
+                                        "d": 0
+                                    },
+                                    "children": {
+                                        "layout": {
+                                            "type": "card",
+                                            "title": "Card 1",
+                                            "subTitle": "See you later",
+                                            "coverImage": "https://www.freevector.com/uploads/vector/preview/7768/FreeVector-Digital-Circle.jpg",
+                                            "icon": "82ca2255-35bd-4e63-880c-087fc7e6e783",
+                                            "iconAlignment": "",
+                                            "size": 255,
+                                            "components": []
+                                        },
+                                        "rows": []
+                                    }
+                                },
+                                {
+                                    "color": "black",
+                                    "scrollable": true,
+                                    "mainAxisSize": "max",
+                                    "mainAxisAlignment": "center",
+                                    "crossAxisAlignment": "center",
+                                    "expansion": "default_expansion",
+                                    "padding": {
+                                        "r": 0,
+                                        "l": 5,
+                                        "u": 0,
+                                        "d": 0
+                                    },
+                                    "children": {
+                                        "layout": {
+                                            "type": "card",
+                                            "title": "Card 1",
+                                            "subTitle": "See you later",
+                                            "coverImage": "https://www.freevector.com/uploads/vector/preview/7768/FreeVector-Digital-Circle.jpg",
+                                            "icon": "82ca2255-35bd-4e63-880c-087fc7e6e783",
+                                            "iconAlignment": "",
+                                            "size": 255,
+                                            "components": []
+                                        },
+                                        "rows": []
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "pageBar": {
+        "title": "text",
+        "subtitle": "texts",
+        "leftIcon": {
+            "type": "icon",
+            "name": "82ca2255-35bd-4e63-880c-087fc7e6e783",
+            "callbackData": "callback data",
+            "size": 15,
+            "button": true
+        }
+    }
+}

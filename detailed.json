@@ -1,0 +1,120 @@
+{
+    "type": "appPage",
+    "mode": "fullscreen",
+    "container": {
+        "height": 1200,
+        "width": 1000,
+        "bgColor": "#000000",
+        "column": {
+            "color": "#000000",
+            "children": {
+                "rows": [
+                    {
+                        "color": "#000000",
+                        "children": {
+                            "component": {
+                                "type": "video_player",
+                                "title": "Godse",
+                                "subtitle": "Never ending story",
+                                "url": "https://hls012.a387e6278d8e06083d813358762e0ac63.com/dstreamhls/9e0e51329fab68c97c0e3be9381fd405/ep.1.v0.1678074211.m3u8"
+                            }
+                        }
+                    },
+                    {
+                        "children": {
+                            "component": {
+                                "type": "action_button",
+                                "text": {
+                                    "type": "text",
+                                    "text": "Play Now",
+                                    "size": 30
+                                },
+                                "callbackData": ""
+                            }
+                        }
+                    },
+                    {
+                        "children": {
+                            "component": {
+                                "text": {
+                                    "text": "In publishing and graphic design, Lorem ipsum is a placeholder text commonly used to demonstrate the visual form of a document or a typeface without relying on meaningful content. Lorem ipsum may be used as a placeholder before final copy is available"
+                                }
+                            }
+                        }
+                    },
+                    {
+                        "color": "#000000",
+                        "children": {
+                            "layout": {
+                                "type": "list_tile",
+                                "title": "One Peice",
+                                "subtitle": "View most popular animes...",
+                                "rightComponents": [
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://www.freevector.com/uploads/vector/preview/23063/large_1x_hi.jpg",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    },
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSp2_8YjD9mYSgOZ-uT0XbkyU7xDUBuAmfchMQyWnrILw&s",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    },
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRd89Lp7hhRqr6Vn764ZLwLHWtOcQJcE7CnXzWasDl-ul4hTYQ57xOdLufGC_mfNsRK6j4&usqp=CAU",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    },
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://i.pinimg.com/736x/47/e2/3e/47e23ef9f58145646746b7e911b79c00.jpg",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    },
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://www.freevector.com/uploads/vector/preview/23063/large_1x_hi.jpg",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    },
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRAiE4qvyp6-a2UdTM_FhoI1XamUceFm9CfVoMF36GT-C5VzeiI5xKbbiYzhgJ7kpGaFrs&usqp=CAU",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    },
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://www.freevector.com/uploads/vector/preview/23063/large_1x_hi.jpg",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    },
+                                    {
+                                        "type": "image",
+                                        "mediaUrl": "https://www.freevector.com/uploads/vector/preview/23063/large_1x_hi.jpg",
+                                        "expandOnClick": false,
+                                        "callbackData": ""
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "pageBar": {
+        "title": "One Peice",
+        "subtitle": "",
+        "rightIcon": {
+            "type": "icon",
+            "name": "https://img.icons8.com/?size=256&id=12773&format=png",
+            "callbackData": "callback data",
+            "size": 15,
+            "button": true
+        }
+    }
+}

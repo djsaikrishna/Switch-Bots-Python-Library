@@ -33,6 +33,7 @@ class StickerController:
         description: str,
         emoji: str,
         pack_id: str,
+        media_type: int = 200
     ) -> Sticker:
         file_name = sticker.name if isinstance(sticker, BytesIO) else sticker
         response = await self.client.post(
@@ -42,6 +43,7 @@ class StickerController:
                 "linkedEmoji": emoji,
                 "name": name,
                 "description": description,
+                "uploadMediaRequest.mediaType": media_type
             },
             files={
                 "uploadMediaRequest.file": (

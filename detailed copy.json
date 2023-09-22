@@ -1,0 +1,37 @@
+{
+    "type": "appPage",
+    "mode": "fullscreen",
+    "container": {
+        "height": 1200,
+        "width": 1000,
+        "bgColor": "#000000",
+        "column": {
+            "color": "#000000",
+            "children": {
+                "component": {
+                    "type": "grid",
+                    "gridSize": 3,
+                    "children": [
+                        {
+                            "type": "grid_tile",
+                            "title": "Title",
+                            "subTitle": "Subtitle of media",
+                            "media": "https://www.freevector.com/uploads/vector/preview/23063/large_1x_hi.jpg",
+                        }
+                    ]*15
+                }
+            }
+        }
+    },
+    "pageBar": {
+        "title": "One Peice",
+        "subtitle": "",
+        "rightIcon": {
+            "type": "icon",
+            "name": "https://img.icons8.com/?size=256&id=12773&format=png",
+            "callbackData": "callback data",
+            "size": 15,
+            "button": true
+        }
+    }
+}
