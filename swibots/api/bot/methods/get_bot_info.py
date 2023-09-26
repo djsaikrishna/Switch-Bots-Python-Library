@@ -4,7 +4,7 @@ from swibots.api.bot.models import BotInfo
 
 
 class GetBotInfo:
-    async def get_bot_info(self: "swibots.ApiClient", bot_id: str) -> BotInfo:
+    async def get_bot_info(self: "swibots.ApiClient", bot_id: int) -> BotInfo:
         """Get bot info
 
         Parameters:

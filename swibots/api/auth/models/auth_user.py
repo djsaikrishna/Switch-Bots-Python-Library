@@ -53,7 +53,6 @@ class AuthUser(SwitchObject):
         self.updated_at = updated_at
 
     def from_json(self, data: Optional[JSONDict]) -> "AuthUser":
-        super().from_json(data)
         if data is not None:
             self.id = data.get("id")
             self.user_name = data.get("user_name")
@@ -84,7 +83,7 @@ class AuthUser(SwitchObject):
         return self
 
     def to_json(self) -> JSONDict:
-        return {
+        data=  {
             "id": self.id,
             "user_name": self.user_name,
             "name": self.name,
@@ -101,14 +100,12 @@ class AuthUser(SwitchObject):
             "private_imageurl": self.private_imageurl,
             "gender": self.gender,
             "date_of_birth": self.date_of_birth,
-            "media1": self.media1,
-            "media2": self.media2,
-            "media3": self.media3,
-            "media4": self.media4,
-            "media5": self.media5,
             "more_about_this": self.more_about_this,
             "active": self.active,
             "parent_id": self.parent_id,
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
+        for index, media in enumerate(self.medias, start=1):
+            data[f"media{index}"] = media
+        return data
