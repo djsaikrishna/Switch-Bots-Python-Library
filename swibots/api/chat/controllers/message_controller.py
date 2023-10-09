@@ -17,7 +17,7 @@ from swibots.api.chat.models import (
     InlineQueryAnswer,
 )
 from swibots.utils import isUrl
-from swibots.api.common.models import User, EmbeddedMedia
+from swibots.api.common.models import User, EmbeddedMedia, Media
 from swibots.api.community.models import Channel, Group
 
 from swibots.utils.types import (
@@ -153,6 +153,7 @@ class MessageController:
     async def send_media(
         self,
         document: Optional[str | BytesIO] = None,
+        media: Optional[Media] = None,
         message: Optional[str] = "",
         community_id: Optional[str] = None,
         group_id: Optional[str] = None,
@@ -163,6 +164,7 @@ class MessageController:
         description: Optional[str] = None,
         file_name: Optional[str] = None,
         mime_type: Optional[str] = None,
+        media_type: Optional[int] = None,
         thumb: Optional[str | BytesIO] = None,
         blocking: Optional[bool] = True,
         progress: Optional[callable] = None,
@@ -172,6 +174,16 @@ class MessageController:
         inline_markup: Optional[InlineMarkup] = None,
         **kwargs,
     ) -> Message | Task:
+        media = await self.client.app.upload_media(
+            path=document,
+            caption=caption,
+            description=description,
+            mime_type=mime_type,
+            media_type=media_type,
+            callback=progress,
+            callback_args=progress_args,
+            thumb=thumb
+        )
         new_message = Message(
             app=self.client.app,
             receiver_id=user_id,
@@ -179,18 +191,19 @@ class MessageController:
             group_id=group_id,
             channel_id=channel_id,
             user_session_id=user_session_id,
+            media_info=media,
+            media_link=media.url,
             replied_to_id=reply_to_message_id,
             message=message,
             inline_markup=inline_markup,
             scheduled_at=scheduled_at,
             **kwargs,
         )
-        form = new_message.to_form_data()
-        files = {}
+        form = new_message.to_json_request()
         log.debug("Sending message %s", json.dumps(form))
-        request_url = f"{BASE_PATH}/create-with-media"
-        reader, thumb_like = None, None
+        request_url = f"{BASE_PATH}/create"
         name = document if isinstance(document, str) else document.name
+        """
         reader = ReadCallbackStream(document)
         files["uploadMediaRequest.file"] = (
             file_name or name,
@@ -243,6 +256,8 @@ class MessageController:
             return task
         response = await task
         close_files()
+        """
+        response = await self.client.post(request_url, data=form)
         return self.client.build_object(Message, response.data["message"])
 
     async def edit_message(
