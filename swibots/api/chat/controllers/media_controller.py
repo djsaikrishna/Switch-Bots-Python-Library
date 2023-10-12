@@ -55,6 +55,7 @@ class MediaController:
         self,
         path: str | BytesIO,
         caption: Optional[str] = None,
+        file_name: Optional[str] = None,
         description: Optional[str] = None,
         thumb: Optional[str] = None,
         mime_type: Optional[str] = None,
@@ -63,10 +64,11 @@ class MediaController:
         callback_args: Optional[tuple] = None,
     ) -> Media:
         """upload media from path"""
-        if isinstance(path, BytesIO):
-            file_name = path.name
-        else:
-            file_name = path
+        if not file_name:
+            if isinstance(path, BytesIO):
+                file_name = path.name
+            else:
+                file_name = path
 
         if not mime_type:
             mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
@@ -94,34 +96,13 @@ class MediaController:
             "fileSize": file_response["size"],
             "fileName": file_response["fileName"],
             "downloadUrl": url,
-            "thumbnailUrl": url,
+            "thumbnailUrl": self.file_to_url(thumb) if thumb != path else url,
             "mediaType": media_type,
             "sourceUri": file_response["fileId"],
             "checksum": file_response["contentSha1"],
         }
 
         return self.client.build_object(Media, media)
-        #        return
-        if callback:
-            d_progress = UploadProgress(
-                current=0,
-                readed=0,
-                file_name=path,
-                client=IOClient(),
-                callback=callback,
-                callback_args=callback_args,
-            )
-            reader.callback = d_progress.update
-            d_progress._readable_file = reader
-        #        files = {"file": (file_name, reader, mime_type)}
-        file_response = self.bucket.upload(
-            reader, file_name=file_name, content_type=mime_type
-        )
-        #       response = await self.client.post(BASE_PATH, form_data=form_data, files=files)
-        reader.close()
-        return file_response
-
-        return self.client.build_object(Media, response.data)
 
     async def get_media(self, media_id: int) -> Media:
         response = await self.client.get(f"{BASE_PATH}/{media_id}")

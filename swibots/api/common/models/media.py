@@ -60,8 +60,8 @@ class Media(SwitchObject):
         }
 
     def to_json(self) -> JSONDict:
-        return {
-            "id": self.id or 0,
+        return {x:y  for x, y in {
+            "id": self.id,
             "caption": self.caption,
             "checksum": self.checksum,
             "description": self.description,
@@ -75,7 +75,7 @@ class Media(SwitchObject):
             "ownerId": self.owner_id,
             "ownerType": self.owner_type,
             "downloadUrl": self.url,
-        }
+        }.items() if y}
 
     def from_json(self, data: Optional[JSONDict] = None) -> "Media":
         if data is not None:
