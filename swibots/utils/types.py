@@ -1,10 +1,11 @@
-import os
+import os, asyncio
 from asyncio import get_event_loop
 from enum import Enum
 from typing import Any, Callable, Collection, Coroutine, Dict, TypeVar, Union
 from inspect import iscoroutinefunction
 from swibots.errors import CancelError
 from b2sdk.progress import AbstractProgressListener
+
 
 class IOClient:
     def __init__(self) -> None:
@@ -26,9 +27,16 @@ class DownloadProgress:
         self.file_name = file_name
         self.started = False
 
+
 class UploadProgress(AbstractProgressListener):
-    def __init__(self, path: str = None, callback=None, callback_args: tuple = (),
-                 client: IOClient = None) -> None:
+    def __init__(
+        self,
+        path: str = None,
+        callback=None,
+        callback_args: tuple = (),
+        client: IOClient = None,
+        loop=None,
+    ) -> None:
         super().__init__()
         self.callback = callback
         self.path = path
@@ -36,79 +44,21 @@ class UploadProgress(AbstractProgressListener):
         self.callback_args = callback_args
         self.readed = self.current = 0
         self.client = client
+        self.loop = loop or asyncio.new_event_loop()
 
     def bytes_completed(self, byte_count):
         super().bytes_completed(byte_count)
         self.readed = self.current = byte_count
-    
+
         if self.callback:
             iscoro = self.callback(self, *self.callback_args or ())
             if iscoroutinefunction(self.callback):
-                loop = get_event_loop()
-                loop.run_until_complete(iscoro())
+                self.loop.run_until_complete(iscoro)
         return
 
     def set_total_bytes(self, total_byte_count):
         self.total = total_byte_count
 
-"""
-class UploadProgress:
-    def __init__(
-        self,
-        current: int,
-        readed: int,
-        client: IOClient,
-        file_name: str,
-        callback,
-        callback_args,
-    ):
-        self.current = current
-        self.readed = readed
-        self.total = os.path.getsize(file_name)
-        self.client = client
-        self.file_name = file_name
-        self.started = False
-        self.cancelled = False
-        self.callback = callback
-        self.callback_args = callback_args
-        self._readable_file: ReadCallbackStream = None
-        self._tasks = []
-
-    def update(self, current: int) -> None:
-        if self.cancelled:
-            return
-        self.current = current
-        self.readed += current
-        if self.callback:
-
-            async def task():
-                try:
-                    iscoro = self.callback(self, *self.callback_args or ())
-                    if iscoroutinefunction(self.callback):
-                        await iscoro
-                except CancelError as er:
-                    self.cancelled = True
-                    if self._readable_file:
-                        self._readable_file.cancelled = True
-                    return False
-                return True
-
-            loop = get_event_loop()
-            _task = loop.create_task(task())
-            self._tasks.append(_task)
-
-            def onDone(task):
-                if task.exception():
-                    if (
-                        isinstance(task.exception(), CancelError)
-                        and self._readable_file
-                    ):
-                        self._readable_file.cancelled = True
-                        return
-                    raise task.exception()
-
-            _task.add_done_callback(onDone)
-"""
 
 CtxType = TypeVar("CtxType")
 ResType = TypeVar("ResType")
