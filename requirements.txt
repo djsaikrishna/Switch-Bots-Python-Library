@@ -1,2 +1,4 @@
 httpx<=0.24.1
 websockets<=11.0.3
+b2sdk
+tqdm

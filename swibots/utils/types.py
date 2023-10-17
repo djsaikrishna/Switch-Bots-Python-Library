@@ -1,10 +1,13 @@
+import os, asyncio
 from asyncio import create_task, run_coroutine_threadsafe, get_event_loop
 from asyncio.exceptions import InvalidStateError
 from enum import Enum
 from typing import Any, Callable, Collection, Coroutine, Dict, TypeVar, Union
 from inspect import iscoroutinefunction
 from swibots.error import CancelError
-
+from threading import Thread
+from b2sdk.progress import AbstractProgressListener
+# from tqdm import tqdm
 
 class IOClient:
     def cancel(self) -> None:
@@ -23,6 +26,81 @@ class DownloadProgress:
         self.started = False
 
 
+class UploadProgress(AbstractProgressListener):
+    def __init__(
+        self,
+        path: str = None,
+        callback=None,
+        callback_args: tuple = (),
+        client: IOClient = None,
+        loop=None,
+        bar=None,
+        readed=0,
+        current=0,
+    ) -> None:
+        super().__init__()
+        self.callback = callback
+        self.path = path
+        self.total = os.path.getsize(path)
+        self.callback_args = callback_args
+        self.readed = readed
+        self.current = current
+        self.client = client
+        #self.bar = bar or tqdm(total=self.total, unit="B",
+        #                       unit_scale=True, unit_divisor=1024)
+    
+    def update(self, bytes):
+        self.current = bytes 
+        self.readed += bytes
+     #   self.bar.update(bytes)
+   #     if self.readed == self.total:
+    #        self.bar.close()
+        self.runCallback(self.current)
+
+    def bytes_completed(self, byte_count):
+        if self.readed and byte_count > self.readed:
+            self.current = byte_count - self.readed
+        else:
+            self.current = byte_count
+        self.readed = byte_count
+       # self.bar.update(self.current)
+        #if self.readed == self.total:
+         #   self.bar.close()
+        self.runCallback(self.current)
+    
+    async def bytes_readed(self, length):
+        self.current = length
+        self.readed += length
+        
+#        if self.readed == self.total:
+ #           self.bar.close()
+
+  #      self.bar.update(length)
+
+        if self.callback:
+            iscoro = self.callback(UploadProgress(self.path, self.callback, self.callback_args, self.client, readed=self.readed, current=length,
+                                                  #bar=self.bar
+                                                  ), *self.callback_args or (),
+                                   )
+            if iscoroutinefunction(self.callback):
+                asyncio.create_task(iscoro)
+
+    def runCallback(self, current):
+
+        if self.callback:
+            iscoro = self.callback(UploadProgress(self.path, self.callback, self.callback_args, self.client, readed=self.readed, current=current,
+                                                  #bar=self.bar
+                                                  ), *self.callback_args or ())
+            if iscoroutinefunction(self.callback):
+
+                th = Thread(target=lambda: asyncio.run(iscoro))
+                th.start()
+        return
+    
+    def set_total_bytes(self, total):
+        self.total = total
+
+"""
 class UploadProgress:
     def __init__(
         self,
@@ -73,6 +151,7 @@ class UploadProgress:
                         self._readable_file.cancelled = True
 
             _task.add_done_callback(onDone)
+"""
 
 CtxType = TypeVar("CtxType")
 ResType = TypeVar("ResType")
@@ -103,11 +182,13 @@ class ReadCallbackStream(object):
             self.file_like = file_like
         self.callback = callback
         self.cancelled = False
+    
+    def seek(self, arg):
+        return self.file_like.seek(arg)
 
     def read(self, *args):
         if self.cancelled:
             raise CancelError("Task has been cancelled!")
-
         chunk = self.file_like.read(*args)
         if len(chunk) > 0:
             self.callback(len(chunk))
@@ -116,6 +197,7 @@ class ReadCallbackStream(object):
     def close(self):
         if hasattr(self.file_like, "close"):
             self.file_like.close()
+
 
 class RequestMethod(Enum):
     GET = "GET"

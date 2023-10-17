@@ -97,32 +97,24 @@ class MessageController:
         Raises:
             ``~switch.error.SwitchError``: If the message could not be sent
         """
-        _embedded = isinstance(media, EmbeddedMedia)
-        if _embedded:
-            message.status = 4
-        data = message.to_json_request()
-        log.debug("Sending message %s", json.dumps(data))
+        async def __process():
+            _embedded = isinstance(media, EmbeddedMedia)
+            if _embedded:
+                message.status = 4
+            data = message.to_json_request()
+            log.debug("Sending message %s", json.dumps(data))
 
-        if (
-            _embedded and isinstance(media.thumbnail, MediaUploadRequest)
-        ) or isinstance(media, MediaUploadRequest):
-            url = f"{BASE_PATH}/create-with-media"
-            form_data = message.to_form_data()
-            form_data.update(media.data_to_request())
-            upload_fn = self._send_file(
-                url, form_data, media.thumbnail if _embedded else media
-            )
-            block = media.thumbnail.block if _embedded else media.block
-            task = asyncio.get_event_loop().create_task(upload_fn)
-            if block:
-                response = await task
-            else:
-                return task
-        else:
+            if isinstance(media, MediaUploadRequest):
+                data["mediaInfo"] = await media.get_media()
+
             if _embedded:
                 data["embedMessage"] = media.to_json_request()
             response = await self.client.post(f"{BASE_PATH}/create", data=data)
-        return self.client.build_object(Message, response.data["message"])
+            return self.client.build_object(Message, response.data["message"])
+        task = asyncio.get_event_loop().create_task(__process())
+        if media and not media.block:
+            return task
+        return await task
 
     async def send_text(
         self,
