@@ -1,5 +1,5 @@
-import uuid
-import mimetypes, os, asyncio
+import uuid, base64
+import mimetypes, os, asyncio, json, hashlib
 from io import BytesIO
 from logging import getLogger
 from swibots.utils.types import (
@@ -8,27 +8,28 @@ from swibots.utils.types import (
     UploadProgress,
     UploadProgressCallback,
 )
-from threading import Thread
 from swibots.config import APP_CONFIG
+from httpx import AsyncClient
 from concurrent.futures import ThreadPoolExecutor
 
-from b2sdk.utils import hex_sha1_of_file, hex_sha1_of_bytes, hex_sha1_of_stream
-from b2sdk.v2 import B2Api
+from logging import getLogger
 
 logger = getLogger(__name__)
+api_url = "https://api004.backblazeb2.com"
 
-backblaze = B2Api()
+
 bucket = None
-if (account_id := APP_CONFIG["BACKBLAZE"].get("ACCOUNT_ID")) and (
-    application_key := APP_CONFIG["BACKBLAZE"].get("APPLICATION_KEY")
-):
-    backblaze.authorize_account("production", account_id, application_key)
-if (
-    bucket_id := APP_CONFIG["BACKBLAZE"].get("BUCKET_ID")
-) and backblaze.get_account_id():
-    bucket = backblaze.get_bucket_by_id(bucket_id)
+account_id = APP_CONFIG["BACKBLAZE"].get("ACCOUNT_ID")
+application_key = APP_CONFIG["BACKBLAZE"].get("APPLICATION_KEY")
 
-minimum_size = backblaze.account_info.get_absolute_minimum_part_size()
+bucket_id = APP_CONFIG["BACKBLAZE"].get("BUCKET_ID")
+
+headers = {}
+headers["Authorization"] = (
+    "Basic "
+    + base64.b64encode(f'{account_id}:{application_key}'.encode()).decode()
+)
+headers["accept"] = "application/json"
 
 
 class MediaUploadRequest:
@@ -47,7 +48,8 @@ class MediaUploadRequest:
         part_size: int = 1 * 1024 * 1024,
         loop=None,
         workers: int = int(os.getenv("UPLOAD_THREADS", 30)),
-        min_file_size: int = 100 * (1024**2),
+        min_file_size: int = 10 * (1024**2),
+        task_count: int = 10,
     ):
         self.path = path
         self.file_name = file_name
@@ -59,74 +61,152 @@ class MediaUploadRequest:
         self.callback = callback
         self.upload_args = upload_args
         self._handle_thumb = reduce_thumbnail
-        if part_size < minimum_size:
-            logger.error(f"part_size is smaller than minimum part size: {minimum_size}")
-            part_size = minimum_size
         self._part_size = part_size
         self.loop = asyncio.get_event_loop()
         self._workers = workers
-#        self.__exec_ = ThreadPoolExecutor(12)
+        self._task_count = task_count
         self._exec = ThreadPoolExecutor(self._workers)
         self._progress: UploadProgress = None
         self._min_file = min_file_size
+        self._client = AsyncClient(verify=False, timeout=None)
+        self.__token = None
 
-    async def upload_file_part(self, part_number, large_file_id, part_data):
-        # Get the upload URL for a part of a large file
-        # upload_url, upload_auth_token = backblaze.session.get_upload_part_url(large_file_id)
-
-        # Upload the part
-        if not self._progress:
-            self._progress = UploadProgress(
-                self.path, self.callback, self.upload_args, IOClient()
+    async def getAccountInfo(self):
+        response = await self._client.get(
+            "https://api.backblazeb2.com/b2api/v2/b2_authorize_account", headers=headers
         )
-        bytes_io = BytesIO(part_data)
-        stream = ReadCallbackStream(bytes_io, self._progress.update)
+        data = response.json()
+        if token := data.get("authorizationToken"):
+            self.__token = token
+        return data
 
-        part_sha1 = hex_sha1_of_stream(bytes_io, len(part_data))
-        loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(self._exec, lambda: backblaze.session.upload_part(
-            large_file_id,
-            part_number,
-            len(part_data),
-            part_sha1,
-            stream,
-        ))
-        print(response)
-#        await self._progress.bytes_readed(response["contentLength"])
-        return response
+    async def upload_large_file(self, content_type, file_name, file_info=None):
+        if not self.__token:
+            info = await self.getAccountInfo()
 
-    async def upload_large_file(self, content_type, file_name, file_info={}):
-        large_file = backblaze.session.start_large_file(
-            bucket.get_id(), file_name, content_type, file_info
+        client = IOClient()
+        progress = UploadProgress(
+            path=self.path, callback=self.callback, callback_args=self.upload_args,
+            client=client
         )
-        file_parts = []
-        file_path = self.path
-
-        with open(file_path, "rb") as file:
-            while True:
-                piece = file.read(self._part_size)
-                if not piece:
-                    break
-                file_parts.append(piece)
-
-        part_futures = []
-        #        with self._exec as executor:
-        part_number = 1
-        loop = asyncio.get_event_loop()
-        for part_data in file_parts:
-            future = loop.create_task(
-                self.upload_file_part(part_number, large_file["fileId"], part_data)
+        with open(self.path, "rb") as file:
+            head = {
+                "Content-Type": content_type,
+                "X-Bz-File-Name": file_name,
+                "Authorization": self.__token,
+            }
+            data = {
+                "fileName": file_name,
+                "contentType": content_type,
+                "bucketId": bucket.get_id(),
+                "fileInfo": file_info,
+            }
+            partHash = {}
+            logger.info("start large file")
+            respp = await self._client.post(
+                "https://api004.backblazeb2.com/b2api/v2/b2_start_large_file",
+                headers=head,
+                data=json.dumps(data),
             )
-            part_futures.append(future)
-            part_number += 1
-        await asyncio.wait(part_futures)
-        part_sha1_array = [future.result()["contentSha1"] for future in part_futures]
+            if respp.status_code != 200:
+                logger.error("on large file")
+                logger.error(respp.json())
 
-        response = backblaze.session.finish_large_file(
-            large_file["fileId"], part_sha1_array
+            logger.info(respp.json())
+            #       token= respp.json()["authorizationToken"]
+            fileId = respp.json()["fileId"]
+            part_number = 1
+            tasks = []
+            while True:
+                chunk = file.read(self._part_size)
+                if not chunk:
+                    break
+
+                async def uploadFile(token, part_number, chunk):
+                    sha1_checksum = hashlib.sha1(chunk).hexdigest()
+
+                    respp = await self._client.post(
+                        f"{api_url}/b2api/v2/b2_get_upload_part_url",
+                        json={"fileId": fileId},
+                        headers={"Authorization": token},
+                    )
+                    if respp.status_code != 200:
+                        logger.error("on Part url")
+                        logger.error(respp.json())
+                    token = respp.json()["authorizationToken"]
+                    upload_part_url = respp.json()["uploadUrl"]
+                    respp = await self._client.post(
+                        upload_part_url,
+                        data=chunk,
+                        headers={
+                            "Authorization": token,
+                            "X-Bz-Part-Number": str(part_number),
+                            "X-Bz-Content-Sha1": sha1_checksum,
+                        },
+                    )
+                    if respp.status_code != 200:
+                        logger.error("onUpload")
+                        logger.error(respp.json())
+                    hash = respp.json()["contentSha1"]
+                    partHash[hash] = respp.json()["partNumber"]
+                    await progress.bytes_readed(respp.json()["contentLength"])
+
+                tsk = asyncio.create_task(
+                    uploadFile(self.__token, part_number, chunk)
+                )  # respp
+                tasks.append(tsk)
+                if len(tasks) == self._task_count:
+                    await asyncio.gather(*tasks)
+                    tasks.clear()
+
+                part_number += 1
+        if tasks:
+            await asyncio.gather(*tasks)
+        hashes = list(map(lambda x: x[0], sorted(partHash.items(), key=lambda x: x[1])))
+
+        response = await self._client.post(
+            f"{api_url}/b2api/v2/b2_finish_large_file",
+            json={
+                "fileId": fileId,
+                "partSha1Array": hashes,
+            },
+            headers={"Authorization": self.__token},
         )
-        return response
+        if response.status_code != 200:
+            logger.error(response.json())
 
+        return response.json()
+    
+    async def file_to_response(self, path, mime_type = None, file_name=None):
+        
+            if not self.__token:
+                await self.getAccountInfo()
+            head = {
+                "Content-Type": "application/json",
+                "Authorization": self.__token,
+            }
+            rsp = await self._client.get(
+                f"https://api004.backblazeb2.com/b2api/v2/b2_get_upload_url?bucketId={bucket_id}",
+                headers=head,
+            )
+
+            token = rsp.json()["authorizationToken"]
+            with open(path, "rb") as f:
+                content = f.read()
+                file_sha1 = hashlib.sha1(content).hexdigest()
+                rsp = await self._client.post(
+                    rsp.json()["uploadUrl"],
+                    headers={
+                        "Authorization": token,
+                        "X-Bz-File-Name": file_name,
+                        "Content-Type": mime_type,
+                        "X-Bz-Content-Sha1": file_sha1,
+                    },
+                    data=content,
+                )
+                file_response = rsp.json()
+                return file_response
+                
     async def get_media(self):
         if not self.mime_type:
             self.mime_type = (
@@ -139,32 +219,19 @@ class MediaUploadRequest:
         if size > self._min_file:
             file_response = await self.upload_large_file(self.mime_type, file_name)
         else:
-            self._progress = UploadProgress(
-                self.path,
-                callback=self.callback,
-                callback_args=self.upload_args,
-                loop=self.loop,
-            )
-            async def _upload_small_file():
-                return bucket.upload_local_file(
-                    self.path,
-                    file_name=file_name,
-                    content_type=self.mime_type,
-                    progress_listener=self._progress if self.callback else None,
-                ).as_dict()
-            loop = asyncio.get_event_loop()
-            file_response = await loop.create_task(_upload_small_file())
-        url = backblaze.get_download_url_for_fileid(file_response["fileId"])
-
+            file_response = await self.file_to_response(self.path, self.mime_type, file_name)
+    
+        url = f"https://f004.backblazeb2.com/b2api/v2/b2_download_file_by_id?fileId={file_response['fileId']}"
+    
         return {
             "caption": self.caption,
             "description": self.description,
             "mimeType": self.mime_type,
-            "fileSize": file_response.get("size", self._progress.readed),
+            "fileSize": file_response.get("size", os.path.getsize(self.path)),
             "fileName": file_response["fileName"],
             "downloadUrl": url,
             "thumbnailUrl": (
-                self.file_to_url(self.thumbnail) if self.thumbnail != self.path else url
+                await self.file_to_url(self.thumbnail) if self.thumbnail != self.path else url
             )
             or url,
             "sourceUri": file_response["fileId"],
@@ -184,8 +251,7 @@ class MediaUploadRequest:
             "mimeType": self.get_mime_type(),
             "fileSize": os.path.getsize(self.path)
             if os.path.exists(self.path)
-            else None
-            #            "thumbnail":self.thumbnail
+            else None,
         }
 
     def get_mime_type(self):
@@ -217,12 +283,16 @@ class MediaUploadRequest:
                 )
         return open(path, "rb")
 
-    def file_to_url(self, path, mime_type: str = None, *args, **kwargs) -> str:
+    async def file_to_url(self, path, mime_type: str = None, *args, **kwargs) -> str:
         if path:
-            file = bucket.upload_local_file(
-                path, path, content_type=mime_type, *args, **kwargs
-            ).as_dict()
-            return backblaze.get_download_url_for_fileid(file["fileId"])
+            _, ext = os.path.splitext(path)
+            file_name = f"{uuid.uuid1()}{ext}"
+
+            file = await self.file_to_response(
+                path, mime_type, file_name
+            )
+            return f"https://f004.backblazeb2.com/b2api/v2/b2_download_file_by_id?fileId={file['fileId']}"
+
 
     def file_to_request(self, url):
         d_progress = UploadProgress(
