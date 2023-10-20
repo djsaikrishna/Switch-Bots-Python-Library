@@ -56,6 +56,7 @@ class Message(
         media_id: int = None,
         media_info: Media = None,
         cached_media: Media = None,
+        user_session_id: str = None,
         **kwargs,
     ):
         super().__init__(app=app)
@@ -85,6 +86,7 @@ class Message(
         self.group = group
         self.information = information
         self.inline_markup = inline_markup
+        self.user_session_id = user_session_id
         self.is_read = is_read
         self.is_document = is_document
         self.media_link = media_link
@@ -128,6 +130,7 @@ class Message(
             "cachedMedia": self.cached_media.to_json() if self.cached_media else None,
             "mediaId": self.media_id,
             "mediaInfo": self.media_info.to_json() if self.media_info else None,
+            "userSessionId": self.user_session_id
         }
 
     def to_form_data(self):
@@ -154,6 +157,8 @@ class Message(
             form_data["status"] = self.status
         if self.is_document is not None:
             form_data["isDocument"] = self.is_document
+        if self.user_session_id:
+            form_data["userSessionId"] = self.user_session_id
         if self.inline_markup is not None:
             form_data.update(self.inline_markup.to_form_data())
         return form_data
@@ -199,6 +204,7 @@ class Message(
             "sentDate": self.sent_date,
             "status": self.status,
             "userId": self.user_id,
+            "userSessionId": self.user_session_id
         }
 
     def from_json(self, data: Optional[JSONDict]) -> "Message":
@@ -255,6 +261,7 @@ class Message(
             self.is_embed_message = data.get("isEmbedMessage") or bool(
                 self.embed_message
             )
+            self.user_session_id = data.get("userSessionId")
         return self
 
     # async def get_receiver(self) -> "User":
@@ -309,6 +316,8 @@ class Message(
 
     def _prepare_response(self) -> "Message":
         response = Message(self.app)
+        if self.user_session_id:
+            response.user_session_id = self.user_session_id
         if self.community_id:
             response.community_id = self.community_id
             response.group_id = self.group_id

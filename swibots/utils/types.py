@@ -6,8 +6,6 @@ from typing import Any, Callable, Collection, Coroutine, Dict, TypeVar, Union
 from inspect import iscoroutinefunction
 from swibots.error import CancelError
 from threading import Thread
-from b2sdk.progress import AbstractProgressListener
-# from tqdm import tqdm
 
 class IOClient:
     def cancel(self) -> None:
@@ -26,7 +24,7 @@ class DownloadProgress:
         self.started = False
 
 
-class UploadProgress(AbstractProgressListener):
+class UploadProgress:
     def __init__(
         self,
         path: str = None,
@@ -34,7 +32,6 @@ class UploadProgress(AbstractProgressListener):
         callback_args: tuple = (),
         client: IOClient = None,
         loop=None,
-        bar=None,
         readed=0,
         current=0,
     ) -> None:
@@ -52,9 +49,6 @@ class UploadProgress(AbstractProgressListener):
     def update(self, bytes):
         self.current = bytes 
         self.readed += bytes
-     #   self.bar.update(bytes)
-   #     if self.readed == self.total:
-    #        self.bar.close()
         self.runCallback(self.current)
 
     def bytes_completed(self, byte_count):
@@ -63,23 +57,15 @@ class UploadProgress(AbstractProgressListener):
         else:
             self.current = byte_count
         self.readed = byte_count
-       # self.bar.update(self.current)
-        #if self.readed == self.total:
-         #   self.bar.close()
         self.runCallback(self.current)
     
     async def bytes_readed(self, length):
         self.current = length
         self.readed += length
-        
-#        if self.readed == self.total:
- #           self.bar.close()
-
-  #      self.bar.update(length)
 
         if self.callback:
             iscoro = self.callback(UploadProgress(self.path, self.callback, self.callback_args, self.client, readed=self.readed, current=length,
-                                                  #bar=self.bar
+                                              
                                                   ), *self.callback_args or (),
                                    )
             if iscoroutinefunction(self.callback):
