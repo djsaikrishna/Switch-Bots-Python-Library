@@ -98,7 +98,7 @@ class MediaUploadRequest:
             data = {
                 "fileName": file_name,
                 "contentType": content_type,
-                "bucketId": bucket.get_id(),
+                "bucketId": bucket_id,
                 "fileInfo": file_info,
             }
             partHash = {}
@@ -178,9 +178,11 @@ class MediaUploadRequest:
         return response.json()
     
     async def file_to_response(self, path, mime_type = None, file_name=None):
-        
+            if not path:
+                return
             if not self.__token:
                 await self.getAccountInfo()
+
             head = {
                 "Content-Type": "application/json",
                 "Authorization": self.__token,
@@ -287,6 +289,9 @@ class MediaUploadRequest:
         if path:
             _, ext = os.path.splitext(path)
             file_name = f"{uuid.uuid1()}{ext}"
+
+            if not mime_type:
+                mime_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
 
             file = await self.file_to_response(
                 path, mime_type, file_name
