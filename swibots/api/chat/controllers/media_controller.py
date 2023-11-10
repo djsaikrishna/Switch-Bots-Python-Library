@@ -70,7 +70,8 @@ class MediaController:
         if token := data.get("authorizationToken"):
             self.__token = token
         log.debug(data)
-        self._min_part_size = data.get("absoluteMinimumPartSize")
+        if min_size := data.get("absoluteMinimumPartSize"):
+            self._min_part_size = min_size
 
         return data
 
@@ -368,11 +369,21 @@ class MediaController:
         wait_factor: int = 6,
     ):
         async with aiofiles.open(path, "rb") as f:
-            respp = await self.request(
-                f"https://api004.backblazeb2.com/b2api/v2/b2_get_upload_part_url",
-                json={"fileId": fileId},
-                headers={"Authorization": token},
-            )
+            for _ in range(retries):
+                try:
+                    respp = await self.request(
+                        f"https://api004.backblazeb2.com/b2api/v2/b2_get_upload_part_url",
+                        json={"fileId": fileId},
+                        headers={"Authorization": token},
+                        timeout=30,
+                    )
+                    break
+                except Exception as er:
+                    log.debug(er)
+                    log.error(er)
+                    if _ == (retries - 1):
+                        raise er
+
             resp_data = respp.json()
             if respp.status_code != 200:
                 logger.error("on Part url")
@@ -551,14 +562,16 @@ class MediaController:
             log.info(resp)
         response = response.json()
         if response.get("code") == "bad_request":
-            logger.error(response)
+            logger.info(response)
             mtch = re.search(
                 "Part number (\d+) has not been uploaded", response.get("message")
             )
             if mtch:
+                part_number = int(mtch.group(1))
                 hash, part_number = await self.__upload_file(
                     self.__token,
-                    int(mtch.group(1)),
+                    part_number,
+                    fileId,
                     path,
                     upl_size=part_size * (part_number - 1),
                     part_size=part_size,
