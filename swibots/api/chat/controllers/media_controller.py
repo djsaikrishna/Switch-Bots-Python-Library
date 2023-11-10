@@ -1,13 +1,13 @@
-import asyncio
+import asyncio, aiofiles
 import os, tempfile
-import json, mimetypes
+import json, mimetypes, re
 from datetime import datetime
 import logging, base64
 from io import BytesIO
 import json, mimetypes
 import logging, hashlib
 from uuid import uuid1
-from memory_profiler import profile
+import httpx
 from typing import Union, Dict
 from io import BytesIO
 import uuid
@@ -58,11 +58,13 @@ class MediaController:
         self.__token = None
         self._min_part_size = 5000000
 
-    async def getAccountInfo(self, client: AsyncClient):
+    async def getAccountInfo(self):
         if self.__token:
             return
-        response = await client.get(
-            "https://api.backblazeb2.com/b2api/v2/b2_authorize_account", headers=headers
+        response = await self.request(
+            "https://api.backblazeb2.com/b2api/v2/b2_authorize_account",
+            headers=headers,
+            method="GET",
         )
         data = response.json()
         if token := data.get("authorizationToken"):
@@ -82,8 +84,8 @@ class MediaController:
         callback_args=None,
         remove: bool = None,
     ):
+        await self.getAccountInfo()
         async with AsyncClient(timeout=None, verify=False) as client:
-            await self.getAccountInfo(client)
             Isbytes = isinstance(path, BytesIO)
 
             if not mime_type:
@@ -128,7 +130,7 @@ class MediaController:
             }
 
             respp = rsp.json()
-            if not response_data.get("uploadUrl"):
+            if not respp.get("uploadUrl"):
                 raise UnknownBackBlazeError(respp)
 
             rsp = await client.post(
@@ -246,6 +248,7 @@ class MediaController:
         task_count: int = int(os.getenv("UPLOAD_TASKS", 0)),
         min_file_size: int = None,
         for_document: bool = False,
+        retries: int = 10,
     ) -> Media:
         """Upload media to switch
 
@@ -288,7 +291,6 @@ class MediaController:
 
         if not mime_type:
             mime_type = mimetypes.guess_type(file_name)[0] or "application/octet-stream"
-
         log.debug(f"Sending request to backblaze: {path}")
         _is_bytesio = isinstance(path, BytesIO)
 
@@ -314,8 +316,9 @@ class MediaController:
                 file_size=size,
                 file_info={
                     "timestamp": str(datetime.now().timestamp()),
-                    "uploaded_by": self.client.user.user_name,
+                    "uploaded_by": str(self.client.user.id),
                 },
+                retries=retries,
             )
         else:
             file_response = await self.file_to_response(
@@ -331,7 +334,6 @@ class MediaController:
         except Exception as er:
             log.exception(er)
             thumbUrl = None
-
         media = {
             "caption": caption,
             "description": description,
@@ -347,7 +349,12 @@ class MediaController:
         }
         return self.client.build_object(Media, media)
 
-    @profile
+    async def request(self, url: str, method: str = "POST", **kwargs):
+        async with AsyncClient(verify=False, timeout=None) as client:
+            return await (client.post if method == "POST" else client.get)(
+                url, **kwargs
+            )
+
     async def __upload_file(
         self,
         token,
@@ -357,56 +364,58 @@ class MediaController:
         part_size,
         fileId: str,
         progress: UploadProgress,
-        client: AsyncClient,
-        #        partHash: Dict,
-        retries: int = 1,
+        retries: int = 10,
+        wait_factor: int = 6,
     ):
-        respp = await client.post(
-            f"https://api004.backblazeb2.com/b2api/v2/b2_get_upload_part_url",
-            json={"fileId": fileId},
-            headers={"Authorization": token},
-        )
-        resp_data = respp.json()
-        if respp.status_code != 200:
-            logger.error("on Part url")
-            logger.error(resp_data)
-            raise UnknownBackBlazeError(resp_data)
-        token = resp_data["authorizationToken"]
-        upload_part_url = resp_data["uploadUrl"]
-        sha1 = hashlib.sha1()
+        async with aiofiles.open(path, "rb") as f:
+            respp = await self.request(
+                f"https://api004.backblazeb2.com/b2api/v2/b2_get_upload_part_url",
+                json={"fileId": fileId},
+                headers={"Authorization": token},
+            )
+            resp_data = respp.json()
+            if respp.status_code != 200:
+                logger.error("on Part url")
+                logger.error(resp_data)
+                raise UnknownBackBlazeError(resp_data)
 
-        def read():
-            readed_bytes = 0
-            with open(path, "rb") as f:
-                f.seek(upl_size)
-                while (readed_bytes < part_size) and (chunk := f.read(1024)):
-                    readed_bytes += len(chunk)
-                    sha1.update(chunk)
-                    yield chunk
+            token = resp_data["authorizationToken"]
+            upload_part_url = resp_data["uploadUrl"]
 
-        for _ in range(retries + 1):
-            try:
-                respp = await client.post(
-                    upload_part_url,
-                    content=read(),
-                    headers={
-                        "Authorization": token,
-                        "X-Bz-Part-Number": str(part_number),
-                        "X-Bz-Content-Sha1": sha1.hexdigest(),
-                    },
-                )
-                resp_data = respp.json()
-                if respp.status_code != 200:
-                    logger.error("onUpload")
-                    logger.error(resp_data)
+            await f.seek(upl_size)
+            chunk = await f.read(part_size)
+
+            for _ in range(retries + 1):
+                if _:
+                    log.info(f"Retrying upload [{path}][{upl_size}:{part_size}]")
+                try:
+                    respp = await self.request(
+                        upload_part_url,
+                        data=chunk,
+                        headers={
+                            "Authorization": token,
+                            "X-Bz-Part-Number": str(part_number),
+                            "X-Bz-Content-Sha1": hashlib.sha1(chunk).hexdigest(),
+                        },
+                    )
+                    resp_data = respp.json()
+                    if resp_data.get("code") == "service_unavailable":
+                        log.error(resp_data)
+                        log.info(f"Waiting for {_ * wait_factor}")
+                        await asyncio.sleep(_ * wait_factor)
+                        continue
+                    if respp.status_code != 200:
+                        logger.error("onUpload")
+                        logger.error(resp_data)
                     hash = resp_data["contentSha1"]
-                    #            partHash[hash] = resp_data["partNumber"]
                     await progress.bytes_readed(resp_data["contentLength"])
                     return hash, resp_data["partNumber"]
-            except Exception as er:
-                log.exception(er)
+                except (httpx.WriteError, httpx.ReadError) as er:
+                    log.exception(er)
+                    log.error(er.request)
+                except Exception as er:
+                    log.exception(er)
 
-    @profile
     async def upload_large_file(
         self,
         path: str | BytesIO,
@@ -418,112 +427,152 @@ class MediaController:
         part_size=None,
         task_count=None,
         file_size=None,
+        retries: int = None,
     ):
-        async with AsyncClient(
-            timeout=None,
-            verify=False
-        ) as client:
-            log.info("getting account info")
-            await self.getAccountInfo(client)
+        log.info("getting account info")
+        await self.getAccountInfo()
 
-            progress = UploadProgress(
-                path=path,
-                callback=callback,
-                callback_args=callback_args,
-                client=IOClient(),
-                size=file_size,
-            )
-            if isinstance(path, BytesIO) and not file_name:
-                file_name = path.name
-            upl_size = 0
-            head = {
-                "Content-Type": content_type,
-                "X-Bz-File-Name": file_name,
-                "Authorization": self.__token,
-            }
-            data = {
-                "fileName": file_name,
-                "contentType": content_type,
-                "bucketId": bucket_id,
-                "fileInfo": file_info,
-            }
-            partHash = {}
-            logger.info("start large file")
-            respp = await client.post(
-                "https://api004.backblazeb2.com/b2api/v2/b2_start_large_file",
-                headers=head,
-                data=json.dumps(data),
-            )
-            if respp.status_code != 200:
-                logger.error("on large file")
-                logger.error(respp.json())
-                raise UnknownBackBlazeError(respp.json())
+        progress = UploadProgress(
+            path=path,
+            callback=callback,
+            callback_args=callback_args,
+            client=IOClient(),
+            size=file_size,
+        )
+        if isinstance(path, BytesIO) and not file_name:
+            file_name = path.name
+        upl_size = 0
+        head = {
+            "Content-Type": content_type,
+            "X-Bz-File-Name": file_name,
+            "Authorization": self.__token,
+        }
+        data = {
+            "fileName": file_name,
+            "contentType": content_type,
+            "bucketId": bucket_id,
+            "fileInfo": file_info,
+        }
+        partHash = {}
+        logger.info("start large file")
+        respp = await self.request(
+            "https://api004.backblazeb2.com/b2api/v2/b2_start_large_file",
+            headers=head,
+            data=json.dumps(data),
+        )
+        if respp.status_code != 200:
+            logger.error("on large file")
+            logger.error(respp.json())
+            raise UnknownBackBlazeError(respp.json())
 
-            logger.debug(respp.json())
+        logger.debug(respp.json())
 
-            fileId = respp.json()
+        fileId = respp.json()
 
-            if not fileId.get("fileId"):
-                raise UnknownBackBlazeError(fileId)
+        if not fileId.get("fileId"):
+            raise UnknownBackBlazeError(fileId)
 
-            fileId = fileId["fileId"]
-            part_number = 1
-            queue = asyncio.Queue(task_count)
+        fileId = fileId["fileId"]
+        part_number = 1
+        queue = asyncio.Queue()
 
-            async def runFromQueue():
-                while True:
-                    task = await queue.get()
+        async def runFromQueue():
+            while queue.qsize():
+                task = await queue.get()
+                try:
                     hash, part_number = await task
-                    partHash[hash] = part_number
+                except Exception as er:
+                    log.exception(er)
+                    continue
+                partHash[hash] = part_number
 
-            qTask = [asyncio.create_task(runFromQueue()) for _ in range(task_count)]
-            try:
-                while upl_size < file_size:
-                    await queue.put(
-                        self.__upload_file(
-                            self.__token,
-                            part_number,
-                            path,
-                            upl_size,
-                            part_size,
-                            fileId,
-                            progress,
-                        )
+        try:
+            while upl_size < file_size:
+                await queue.put(
+                    self.__upload_file(
+                        self.__token,
+                        part_number,
+                        path,
+                        upl_size,
+                        part_size,
+                        fileId,
+                        progress,
+                        retries=retries,
                     )
-                    part_number += 1
-                    upl_size += part_size
-            except Exception as er:
-                log.exception(er)
-            for q in qTask:
+                )
+                part_number += 1
+                upl_size += part_size
+        except Exception as er:
+            log.exception(er)
+        qTask = [asyncio.create_task(runFromQueue()) for _ in range(task_count)]
+
+        try:
+            await asyncio.wait(qTask)
+        except Exception as er:
+            log.exception(er)
+
+        for q in qTask:
+            if q.done() and (exc := q.exception()):
+                log.exception(exc)
+            if not q.done():
                 q.cancel()
-            hashes = list(map(lambda x: x[0], sorted(partHash.items(), key=lambda x: x[1])))
-            try:
-                response = await client.post(
-                    f"https://api004.backblazeb2.com/b2api/v2/b2_finish_large_file",
-                    json={
-                        "fileId": fileId,
-                        "partSha1Array": hashes,
-                    },
-                    headers={"Authorization": self.__token},
-                )
-            except Exception as er:
-                log.error("Error on finish large file")
-                log.exception(er)
-                log.info("canceling upload")
-                resp = await self.client.post(
-                    f"https://api004.backblazeb2.com/b2api/v2/b2_cancel_large_file",
-                    data={"fileId": fileId},
-                    headers={"Authorization": self.__token},
-                )
-                log.info(resp)
 
-            if response.status_code != 200:
-                logger.error(response.json())
+        if not partHash:
+            raise Exception("parts are not found!")
+        response = await self.__finish_large_file(
+            partHash, fileId, path, part_size=part_size, progress=progress
+        )
+        return response
 
-        return response.json()
+    async def __finish_large_file(
+        self, partHash, fileId, path, part_size, progress, retry_count: int = 0
+    ):
+        if retry_count > 3:
+            raise Exception("Max retries reached for finish file")
+        hashes = list(map(lambda x: x[0], sorted(partHash.items(), key=lambda x: x[1])))
+        try:
+            response = await self.request(
+                f"https://api004.backblazeb2.com/b2api/v2/b2_finish_large_file",
+                json={
+                    "fileId": fileId,
+                    "partSha1Array": hashes,
+                },
+                headers={"Authorization": self.__token},
+            )
+        except Exception as er:
+            log.error("Error on finish large file")
+            log.exception(er)
+            log.info("canceling upload")
+            resp = await self.request(
+                f"https://api004.backblazeb2.com/b2api/v2/b2_cancel_large_file",
+                data={"fileId": fileId},
+                headers={"Authorization": self.__token},
+            )
+            log.info(resp)
+        response = response.json()
+        if response.get("code") == "bad_request":
+            logger.error(response)
+            mtch = re.search(
+                "Part number (\d+) has not been uploaded", response.get("message")
+            )
+            if mtch:
+                hash, part_number = await self.__upload_file(
+                    self.__token,
+                    int(mtch.group(1)),
+                    path,
+                    upl_size=part_size * (part_number - 1),
+                    part_size=part_size,
+                    progress=progress,
+                )
+                partHash[hash] = part_number
+                retry_count += 1
+                return await self.__finish_large_file(
+                    partHash, fileId, path, part_size, progress, retry_count=retry_count
+                )
+        return response
 
     async def get_media(self, media_id: int) -> Media:
-        response = await self.client.get(f"{BASE_PATH}/{media_id}")
+        response = await self.get(f"{BASE_PATH}/{media_id}")
         return self.client.build_object(Media, response.data)
 
     async def update_media(self, media_id: int, media: Optional[Media] = None) -> Media:
